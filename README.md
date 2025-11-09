@@ -1,4 +1,4 @@
-# 🎨 Collaborative Drawing Canvas
+# 🎨 Collaborative Drawing Canvas (Flam Assignment)
 
 > A real-time multiplayer drawing app where creativity meets collaboration!
 
@@ -218,3 +218,4 @@ If you're stuck or just want to chat about the project, feel free to reach out!
 ---
 
 *Last updated: [Current Date]*
+
