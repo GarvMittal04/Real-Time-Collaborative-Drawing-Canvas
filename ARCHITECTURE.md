@@ -52,7 +52,6 @@ Here's how the pieces fit together:
 - All drawing happens in the browser (client-side rendering)
 
 ---
----
 
 ##  WebSocket Protocol
 
@@ -157,5 +156,6 @@ This architecture is designed to provide:
 - Predictable conflict resolution for simultaneous actions
 
 It provides a solid foundation that can be extended to include persistence, private rooms, additional tools, and advanced collaborative features in the future.
+
 
 
