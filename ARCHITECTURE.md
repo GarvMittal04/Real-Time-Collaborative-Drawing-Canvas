@@ -1,164 +1,131 @@
-# Architecture Documentation
+#  Architecture Documentation
 
-## 🏗️ System Overview
+This document explains how the real-time collaborative drawing application works behind the scenes. It covers the system design, data flow, WebSocket communication, undo/redo logic, performance choices, and how conflicts are handled when multiple users draw at the same time.
 
-Client-server architecture with WebSocket for real-time bidirectional communication.
+---
+
+##  1. Data Flow Diagram
+
+The app uses a client–server model with WebSockets for two-way communication. The browser captures drawing events and sends them to the server, which then broadcasts them to all connected clients.
+
+### High-Level Data Flow
+
 ```
-┌─────────────┐         WebSocket         ┌─────────────┐
-│   Client 1  │◄──────────────────────────►│             │
-├─────────────┤                            │   Node.js   │
-│  Browser    │         WebSocket          │   Server    │
-│  + Canvas   │◄──────────────────────────►│   + WS      │
-└─────────────┘                            │             │
-                                           └─────────────┘
-┌─────────────┐         WebSocket                  ▲
-│   Client 2  │◄───────────────────────────────────┘
-└─────────────┘
+You draw something
+    ↓
+Your browser: "Hey server, I drew from point A to B"
+    ↓
+Server: "Got it! Everyone listen up!"
+    ↓
+Server broadcasts to all other users
+    ↓
+Their browsers: "Okay, drawing that now!"
+    ↓
+Everyone sees the same drawing! 
 ```
 
-## 📊 Data Flow Diagram
-
-### Drawing Event Flow
-```
-User Input → Canvas.js → WebSocket.js → Network → Server
-                ↓                                    ↓
-         Local Draw                           Add to History
-                                                     ↓
-                                              Broadcast
-                                                     ↓
-                                           Other Clients
-                                                     ↓
-                                              Queue & Draw
-```
+---
 
 ## 🔌 WebSocket Protocol
 
-### Message Types
+The app uses WebSocket events instead of HTTP requests to achieve real-time two-way communication.
 
-**Client → Server:**
-- `draw`: Drawing operation
-- `undo`: Undo last operation
-- `redo`: Redo operation
-- `clear`: Clear canvas
-- `cursor`: Cursor position update
+### Client → Server Events
 
-**Server → Client:**
-- `init`: Initial state (history, users)
-- `draw`: Broadcast drawing operation
-- `undo`: Global undo event
-- `redo`: Global redo event
-- `clear`: Canvas cleared
-- `cursor`: Remote cursor position
-- `user-joined`: New user connected
-- `user-left`: User disconnected
+| Event | Description |
+|--------|----------------|
+| `stroke:start` | User begins drawing (tool, color, size) |
+| `stroke:point` | Sends points while drawing (x,y coordinates) |
+| `stroke:end` | User finishes a stroke; server commits it as an operation |
+| `undo` | User requests to undo the latest operation |
+| `redo` | User requests to redo the last undone operation |
+| `cursor` | Sends user cursor position periodically |
+
+### Server → Client Events
+
+| Event | Description |
+|--------|----------------|
+| `state:snapshot` | Sends full history and active users when a user joins |
+| `op:commit` | Broadcasts a newly completed stroke to everyone |
+| `op:undo` | Removes the latest operation across all clients |
+| `op:redo` | Reapplies the last undone operation |
+| `users:update` | Updated user list when someone joins/leaves |
+| `cursor` | Shows live cursor position of other users |
+| `user:left` | Notifies users when someone disconnects |
+
+---
 
 ## 🔄 Undo/Redo Strategy
 
-### Global Undo System
+Undo/Redo is implemented as a **global operation**, not per user. This ensures the entire canvas stays consistent for all users.
 
-**Data Structure:**
-```javascript
-drawingHistory = [
-  { opId: "1-123-0.456", type: "draw", x0, y0, x1, y1, ... },
-  { opId: "2-124-0.789", type: "draw", x0, y0, x1, y1, ... }
-]
-```
+### Logic
 
-**Undo Flow:**
-1. Client pops from history
-2. Pushes to redo stack
-3. Redraws canvas
-4. Sends undo to server
-5. Server broadcasts to all clients
+- Each completed stroke is saved as an “operation” on the server.
+- Server maintains:
+  - `ops[]` = list of committed operations
+  - `undone[]` = stack of undone operations
+- **Undo**:
+  - Last operation is removed from `ops[]`, pushed to `undone[]`, and broadcast to all clients
+  - Clients redraw canvas based on updated `ops[]`
+- **Redo**:
+  - Last undone operation is moved back to `ops[]` and broadcast
+  - Clients reapply it
 
-**Trade-offs:**
-- ✅ Simple implementation
-- ✅ Predictable behavior
-- ❌ Last-write-wins (no conflict resolution)
-- ❌ Can undo other users' work
+### Why this approach?
 
-## ⚡ Performance Optimizations
+- Keeps all clients in sync
+- Prevents conflicts between per-user undo histories
+- Easy to maintain and understand
 
-### 1. Message Batching
-Batch drawing operations every 16ms (~60fps)
-**Result**: 70% reduction in network calls
+---
 
-### 2. Canvas Redraw Strategy
-- Incremental drawing for new operations
-- Full redraw only on undo/redo
+## ⚙️ Performance Decisions
 
-### 3. Remote Drawing Queue
-Process up to 10 operations per frame
-**Result**: Smooth 60fps even with network bursts
+To ensure smooth real-time drawing and low latency, a few key optimizations were used:
 
-### 4. Cursor Throttling
-Max 20 cursor updates/second per user
+| Decision | Reason |
+|------------|----------------|
+| **Batching drawing points** | Reduces network load during fast mouse movement |
+| **Redrawing only on commit/undo/redo** | Avoids unnecessary full canvas updates |
+| **Bezier curve smoothing** | Converts sampled mouse points into smooth strokes |
+| **Throttled cursor updates** | Prevents flooding WebSocket with cursor data |
+| **Server stores operations, client replays** | Keeps canvas deterministic and consistent |
 
-## 🤝 Conflict Resolution
+### Goal of Optimizations
 
-**Approach**: Last-Write-Wins (LWW)
+- Maintain 50–60 FPS drawing experience
+- Reduce network traffic
+- Keep UI responsive even with multiple users drawing
 
-When two users draw simultaneously:
-- Both strokes appear
-- Last received stroke is on top
-- No complex synchronization needed
+---
 
-**Alternative** (not implemented): Operational Transformation
+## ⚔️ Conflict Resolution
 
-## 🏗️ Code Architecture
+When multiple users draw simultaneously, their operations may overlap. The system follows a simple and predictable approach:
 
-### Separation of Concerns
+### Strategy: **Order-Based Rendering (Last Write Wins)**
 
-- **canvas.js**: Pure drawing logic (no network)
-- **websocket.js**: Pure network logic (no canvas)
-- **main.js**: Application orchestration
+- Each stroke is treated as a separate immutable operation
+- The order in which the server receives operations determines which stroke appears on top
+- No merging of strokes is required
 
-### Benefits
-- Easy to test independently
-- Can swap implementations
-- Clear responsibility boundaries
+### Why this strategy?
 
-## 📈 Performance Metrics
+- Works well for drawing tools since overlapping is expected
+- Simple to implement and maintain
+- Keeps rendering consistent for all users
 
-**Tested Configuration:**
-- 10 concurrent users
-- ~100 operations/second total
-- Maintained 60fps on all clients
+---
 
-**Bottlenecks:**
-- Server memory (history storage)
-- Client canvas redraws on undo/redo
-- Network bandwidth with many users
+## ✅ Summary
 
-## 🚀 Scaling Considerations
+This architecture is designed to provide:
 
-### Current Limitations
-- Single server instance
-- In-memory state
-- No horizontal scaling
+- Real-time synchronized drawing for multiple users
+- Clear and consistent shared canvas state
+- Efficient WebSocket communication
+- Simple yet reliable undo/redo handling
+- Predictable conflict resolution for simultaneous actions
 
-### For Production:
-1. Redis for shared state
-2. Socket.io with Redis adapter
-3. Room system for isolation
-4. Operation pruning (limit history)
-
-## 🔐 Security Considerations
-
-**Current**: Development/demo only
-
-**Production Requirements:**
-- WSS (encryption)
-- Rate limiting
-- Input validation
-- Authentication
-- CORS configuration
-
-## 📚 References
-
-- HTML5 Canvas API
-- WebSocket Protocol
-- Operational Transformation
-- CRDTs
-```
-
+It provides a solid foundation that can be extended to include persistence, private rooms, additional tools, and advanced collaborative features in the future.
