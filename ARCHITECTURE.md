@@ -23,7 +23,35 @@ Their browsers: "Okay, drawing that now!"
     ↓
 Everyone sees the same drawing! 
 ```
+##  System Architecture
 
+Here's how the pieces fit together:
+```
+┌─────────────────┐                    ┌─────────────────┐
+│   Browser 1     │                    │   Node.js       │
+│   (User A)      │◄──── WebSocket ───►│   Server        │
+│                 │                    │   (Mediator)    │
+│  - Canvas       │                    │                 │
+│  - WebSocket    │                    │  - Express      │
+│  - Main Logic   │                    │  - WebSocket    │
+└─────────────────┘                    │  - History      │
+                                       └─────────────────┘
+┌─────────────────┐                            ▲
+│   Browser 2     │                            │
+│   (User B)      │◄──── WebSocket ────────────┘
+│                 │
+│  - Canvas       │
+│  - WebSocket    │
+│  - Main Logic   │
+└─────────────────┘
+```
+
+**Key Points:**
+- Each user connects directly to the server via WebSocket
+- Server doesn't care about the drawing itself, just passes messages around
+- All drawing happens in the browser (client-side rendering)
+
+---
 ---
 
 ##  WebSocket Protocol
@@ -129,4 +157,5 @@ This architecture is designed to provide:
 - Predictable conflict resolution for simultaneous actions
 
 It provides a solid foundation that can be extended to include persistence, private rooms, additional tools, and advanced collaborative features in the future.
+
 
