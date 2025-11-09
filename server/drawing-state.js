@@ -1,6 +1,5 @@
-// Drawing state management
 
-class DrawingState {
+class DrawingState {  // Drawing state management
     constructor() {
         this.operations = [];
         this.maxOperations = 1000;
@@ -9,14 +8,11 @@ class DrawingState {
     addOperation(operation) {
         this.operations.push(operation);
         
-        // Prevent memory leak
-        if (this.operations.length > this.maxOperations) {
+        if (this.operations.length > this.maxOperations) {         // Prevent memory leak
             this.operations.shift();
         }
-        
         return operation;
     }
-
     removeLastOperation() {
         return this.operations.pop();
     }
@@ -33,18 +29,15 @@ class DrawingState {
         this.operations = [];
     }
 
-    // Get operations by user
-    getOperationsByUser(userId) {
+    getOperationsByUser(userId) {    // Get operations by user
         return this.operations.filter(op => op.userId === userId);
     }
 
-    // Get operations after a specific timestamp
-    getOperationsAfter(timestamp) {
+    getOperationsAfter(timestamp) {    // Get operations after a specific timestamp
         return this.operations.filter(op => op.timestamp > timestamp);
     }
 
-    // Get state snapshot (for new users joining)
-    getSnapshot() {
+    getSnapshot() {    //  getsnapshot (for new users joining)
         return {
             operations: this.operations,
             count: this.operations.length,
@@ -52,12 +45,12 @@ class DrawingState {
         };
     }
 
-    // Restore from snapshot
-    restoreFromSnapshot(snapshot) {
+    restoreFromSnapshot(snapshot) {    // Restore from snapshot
         if (snapshot && snapshot.operations) {
             this.operations = snapshot.operations;
         }
     }
 }
+
 
 module.exports = DrawingState;
