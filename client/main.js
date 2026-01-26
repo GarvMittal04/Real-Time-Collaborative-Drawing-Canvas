@@ -3,7 +3,7 @@ console.log('✅ main.js loaded');
 class CollaborativeCanvas {
     constructor() {
         this.canvas = null;
-        this.wsManager = null;
+        this.wsManager = null; 
         this.drawingHistory = [];
         this.redoStack = [];
         this.remoteCursors = new Map();
@@ -354,3 +354,4 @@ class CollaborativeCanvas {
 
 // Initialize app
 new CollaborativeCanvas();
+
